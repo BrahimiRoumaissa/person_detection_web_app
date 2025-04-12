@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Person Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .video-container {
+            position: relative;
+            width: 100%;
+            margin: 20px 0;
+        }
+        #video-feed {
+            width: 100%;
+            border-radius: 5px;
+        }
+        .counter {
+            text-align: center;
+            font-size: 24px;
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 5px;
+        }
+        #startButton {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        #startButton:disabled {
+            background-color: #cccccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Person Detection</h1>
+        <div class="counter">
+            Persons detected: <span id="person-count">0</span>
+        </div>
+        <div class="video-container">
+            <video id="video" autoplay playsinline style="display: none;"></video>
+            <canvas id="canvas" style="display: none;"></canvas>
+            <img id="processed-feed" style="width: 100%;">
+        </div>
+        <button id="startButton">Start Detection</button>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const processedFeed = document.getElementById('processed-feed');
+        const personCount = document.getElementById('person-count');
+        const startButton = document.getElementById('startButton');
+        let stream = null;
+        let isProcessing = false;
+
+        // Get camera access
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                startButton.textContent = 'Stop Detection';
+                startButton.disabled = false;
+                isProcessing = true;
+                processFrame();
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                alert('Could not access camera. Please make sure you have granted camera permissions.');
+            }
+        }
+
+        // Stop camera
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+                startButton.textContent = 'Start Detection';
+                isProcessing = false;
+            }
+        }
+
+        // Process and send frame
+        async function processFrame() {
+            if (!isProcessing) return;
+
+            try {
+                // Draw video frame to canvas
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+
+                // Convert canvas to base64
+                const frameData = canvas.toDataURL('image/jpeg').split(',')[1];
+
+                // Send to server
+                const response = await fetch('/process_frame', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ image: frameData })
+                });
+
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.frame) {
+                    // Update processed image
+                    processedFeed.src = 'data:image/jpeg;base64,' + data.frame;
+                    personCount.textContent = data.count;
+                }
+
+                // Continue processing
+                requestAnimationFrame(processFrame);
+            } catch (err) {
+                console.error('Error processing frame:', err);
+            }
+        }
+
+        // Toggle camera
+        startButton.addEventListener('click', () => {
+            if (!stream) {
+                startCamera();
+            } else {
+                stopCamera();
+            }
+        });
+    </script>
+</body>
+</html> 
